@@ -4,6 +4,7 @@
      Vercel serverless instances.
    - Short burst limit (per minute) kept in memory (best-effort).
    - Login attempt limit (in memory) slows down password guessing.
+   - Homepage demo limit per IP address (in memory).
    ========================================================================= */
 import { ApiError } from "./errors.js";
 import { query } from "./db.js";
@@ -12,6 +13,8 @@ export const AI_PER_MINUTE = 5;
 export const AI_PER_DAY = 30;
 const minuteBuckets = new Map();
 const loginBuckets = new Map();
+const demoMinute = new Map();
+const demoHour = new Map();
 
 function bump(map, key, windowMs, limit, now) {
   const w = Math.floor(now / windowMs);
@@ -46,5 +49,15 @@ export async function checkAiLimit(userId) {
 export function checkLoginAttempts(key, now = Date.now()) {
   if (bump(loginBuckets, key, 5 * 60000, 10, now)) {
     throw new ApiError(429, "rate_limited", "Too many login attempts. Please wait 5 minutes.");
+  }
+}
+
+/* Homepage live demo (no login): 3 per minute and 15 per hour per IP address */
+export function checkDemoLimit(ip, now = Date.now()) {
+  if (bump(demoMinute, ip, 60000, 3, now)) {
+    throw new ApiError(429, "rate_limited", "Too many tries. Please wait a minute.");
+  }
+  if (bump(demoHour, ip, 3600000, 15, now)) {
+    throw new ApiError(429, "rate_limited", "Demo limit reached. Create a free account for full access.");
   }
 }
